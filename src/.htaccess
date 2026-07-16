@@ -1,0 +1,25 @@
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    RewriteRule ^(controllers|helpers|repos|services|vendor)/ - [F,L,NC]
+
+    <FilesMatch "^\.">
+        Order allow,deny
+        Deny from all
+    </FilesMatch>
+
+    <FilesMatch "\.(env|ini|log|sh|sql|json|lock|dist)$">
+        Order allow,deny
+        Deny from all
+    </FilesMatch>
+
+    RewriteCond %{REQUEST_FILENAME} -f [OR]
+    RewriteCond %{REQUEST_FILENAME} -d
+    RewriteRule ^ - [L]
+
+    RewriteCond %{HTTP:Authorization} .
+    RewriteRule .* - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization}]
+
+    RewriteRule ^(.*)$ router.php [QSA,L]
+</IfModule>
+
+Options -Indexes
