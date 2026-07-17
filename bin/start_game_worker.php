@@ -12,8 +12,7 @@ $port = Config::getString('RABBITMQ_PORT');
 $user = Config::getString('RABBITMQ_USER');
 $pass = Config::getString('RABBITMQ_PASS');
 
-$baseUrl = rtrim(Config::getString('SERVER_BASE_URL'), '/');
-$startGameUrl = $baseUrl . '/game/start';
+$startGameUrl = 'http://host.docker.internal:8083/game/start';
 
 function connectWithRetry($host, $port, $user, $pass, $maxAttempts = 30, $sleep = 3) {
     for ($i = 1; $i <= $maxAttempts; $i++) {

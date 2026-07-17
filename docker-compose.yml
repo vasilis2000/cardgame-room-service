@@ -1,16 +1,4 @@
 services:
-  mongodb:
-    image: mongo:6
-    container_name: mongodb
-    restart: unless-stopped
-    environment:
-      MONGO_INITDB_ROOT_USERNAME: root
-      MONGO_INITDB_ROOT_PASSWORD: example
-    ports:
-      - "27017:27017"
-    volumes:
-      - mongo_data:/data/db
-
   redis:
     image: redis:7-alpine
     container_name: redis_cache
@@ -56,7 +44,6 @@ services:
     depends_on:
       - redis
       - rabbitmq
-      - mongodb
     restart: unless-stopped
 
   worker:
@@ -81,7 +68,6 @@ services:
     depends_on:
       - rabbitmq
       - redis
-      - mongodb
     restart: unless-stopped
 
 volumes:
