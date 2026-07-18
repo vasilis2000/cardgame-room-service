@@ -7,7 +7,7 @@ class RoomController
 
     public function __construct()
     {
-        
+
         $this->repo = new RoomRepository();
     }
 
@@ -73,7 +73,7 @@ class RoomController
 
     public function list(): void
     {
-       
+
         try {
             AuthHelper::getAuthenticatedUser();
             $rooms = $this->repo->getAvailableRooms();
@@ -114,8 +114,8 @@ class RoomController
         $room = $roomData['room'];
         $roomId = $room['id'];
 
-        if ($room['status'] === 'starting' || $room['status'] === 'playing') {
-            ResponseHelper::sendResponse(409, ['message' => 'Room has already started.']);
+        if ($room['status'] === 'starting' || $room['status'] === 'playing' || $room['status'] === 'finished') {
+            ResponseHelper::sendResponse(409, ['message' => 'Room has already finished or started.']);
         }
 
         $currentReady = $this->repo->getPlayerReadyStatus($roomId, $userId);
@@ -162,6 +162,34 @@ class RoomController
                 ResponseHelper::sendResponse(404, ['message' => 'You are not in a room.']);
             }
             ResponseHelper::sendResponse(200, $rooms);
+        } catch (Exception $e) {
+            ResponseHelper::sendResponse(500, ['message' => $e->getMessage()]);
+        }
+    }
+    public function finish(array $data): void
+    {
+        try {
+            if (empty($data['room_id'])) {
+                ResponseHelper::sendResponse(422, ['message' => 'Room ID is required.']);
+            }
+            if (empty($data['winner'])) {
+                ResponseHelper::sendResponse(422, ['message' => 'winner is required.']);
+            }
+
+            $room = $this->repo->findById($data['room_id']);
+            if (!$room) {
+                ResponseHelper::sendResponse(404, ['message' => 'the is no room.']);
+            }
+            if ($room['status'] !== 'starting') {
+                ResponseHelper::sendResponse(422, ['message' => 'Room is not playing.']);
+            }
+            $players = array_column($room['players'], 'user_id');
+            if (!in_array((int)$data['winner'], $players, true)) {
+                ResponseHelper::sendResponse(422, ['message' => 'Winner must be a player in the room.']);
+            }
+            $this->repo->revertRoomStatus($room['id'], 'finished');
+            $this->repo->revertRoomwinner($room['id'], $data['winner']);
+            ResponseHelper::sendResponse(200, ['message' => 'Room winner updated']);
         } catch (Exception $e) {
             ResponseHelper::sendResponse(500, ['message' => $e->getMessage()]);
         }

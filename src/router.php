@@ -25,7 +25,7 @@ try {
     $action   = $segments[1] ?? null;
     $method   = $_SERVER['REQUEST_METHOD'];
     Config::load();
-    
+
     $roomController = new RoomController();
 
     switch ($resource) {
@@ -70,6 +70,14 @@ try {
                 case 'current':
                     if ($method === 'GET') {
                         $roomController->getroom();
+                    } else {
+                        ResponseHelper::sendResponse(405, ['message' => 'Method Not Allowed.']);
+                    }
+                    break;
+                case 'finish':
+                    if ($method === 'POST') {
+                        $data     = json_decode(file_get_contents('php://input'), true) ?? [];
+                        $roomController->finish($data);
                     } else {
                         ResponseHelper::sendResponse(405, ['message' => 'Method Not Allowed.']);
                     }

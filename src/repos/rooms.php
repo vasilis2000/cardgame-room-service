@@ -15,7 +15,7 @@ class RoomRepository
 
     public function __construct()
     {
-        
+
         $this->db    = MongoDBConnection::getDatabase();
         $this->rooms = $this->db->selectCollection('rooms');
         $this->redis = RedisConnection::getClient();
@@ -88,6 +88,7 @@ class RoomRepository
             'max_players'    => $maxPlayers,
             'current_players' => 0,
             'status'         => 'waiting',
+            'winner'         => '',
             'players'        => [],
             'created_at'     => new UTCDateTime()
         ];
@@ -133,8 +134,9 @@ class RoomRepository
             throw new Exception('Room is full.');
         }
 
-        $this->clearAllPlayerRoomCaches($roomId);
         $this->deleteRoomCache($roomId);
+        $this->clearAllPlayerRoomCaches($roomId);
+        $this->deleteUserRoomCache((int)$userId);
         $this->deleteAvailableRoomsCache();
     }
 
@@ -204,7 +206,7 @@ class RoomRepository
         }
 
         $result = $this->rooms->updateOne(
-            ['_id' => $oid],
+            ['_id' => $oid, 'players.user_id' => $userId],
             [
                 '$pull' => ['players' => ['user_id' => $userId]],
                 '$inc'  => ['current_players' => -1],
@@ -214,9 +216,8 @@ class RoomRepository
         if ($result->getMatchedCount() === 0) {
             return;
         }
-
-        $this->clearAllPlayerRoomCaches($roomId);
         $this->deleteRoomCache($roomId);
+        $this->clearAllPlayerRoomCaches($roomId);
         $this->deleteAvailableRoomsCache();
 
         $room = $this->rooms->findOne(['_id' => $oid]);
@@ -241,9 +242,8 @@ class RoomRepository
         if ($result->getMatchedCount() === 0) {
             throw new Exception('User not in this room.');
         }
-
-        $this->clearAllPlayerRoomCaches($roomId);
         $this->deleteRoomCache($roomId);
+        $this->clearAllPlayerRoomCaches($roomId);
         $this->deleteAvailableRoomsCache();
     }
 
@@ -345,8 +345,8 @@ class RoomRepository
         $success = $result->getModifiedCount() > 0;
 
         if ($success) {
-            $this->clearAllPlayerRoomCaches($roomId);
             $this->deleteRoomCache($roomId);
+            $this->clearAllPlayerRoomCaches($roomId);
             $this->deleteAvailableRoomsCache();
         }
 
@@ -367,8 +367,29 @@ class RoomRepository
         );
 
         if ($result->getModifiedCount() > 0) {
-            $this->clearAllPlayerRoomCaches($roomId);
             $this->deleteRoomCache($roomId);
+            $this->clearAllPlayerRoomCaches($roomId);
+            $this->deleteAvailableRoomsCache();
+            return true;
+        }
+        return false;
+    }
+    public function revertRoomwinner(string $roomId, string $winner): bool
+    {
+        try {
+            $oid = new ObjectId($roomId);
+        } catch (\InvalidArgumentException $e) {
+            return false;
+        }
+
+        $result = $this->rooms->updateOne(
+            ['_id' => $oid],
+            ['$set' => ['winner' => $winner]]
+        );
+
+        if ($result->getModifiedCount() > 0) {
+            $this->deleteRoomCache($roomId);
+            $this->clearAllPlayerRoomCaches($roomId);
             $this->deleteAvailableRoomsCache();
             return true;
         }

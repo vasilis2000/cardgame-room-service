@@ -14,7 +14,7 @@ class RabbitMQPublisher
     public function __construct()
     {
         $host = Config::getString('RABBITMQ_HOST');
-        $port = Config::getString('RABBITMQ_PORT');
+        $port = Config::getInt('RABBITMQ_PORT');
         $user = Config::getString('RABBITMQ_USER');
         $pass = Config::getString('RABBITMQ_PASS');
 
