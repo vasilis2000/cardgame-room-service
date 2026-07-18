@@ -90,7 +90,7 @@ class RoomController
         if (!$roomData) {
             ResponseHelper::sendResponse(404, ['message' => 'You are not in a room.']);
         }
-        if ($roomData['room']['status'] !== 'waiting') {
+        if ($roomData['room']['status'] !== 'waiting' && $roomData['room']['status'] !== 'finished' ) {
             ResponseHelper::sendResponse(409, ['message' => 'Cannot leave a room that is already starting or playing.']);
         }
         $roomId = $roomData['room']['id'];
