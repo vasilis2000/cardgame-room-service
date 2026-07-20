@@ -10,11 +10,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
 }
 
 require_once __DIR__ . '/../vendor/autoload.php';
-require_once __DIR__ . '/helpers/Config.php';
-require_once __DIR__ . '/controllers/rooms.php';
-require_once __DIR__ . '/helpers/AuthHelper.php';
-require_once __DIR__ . '/helpers/JwtHelper.php';
-require_once __DIR__ . '/helpers/ResponseHelper.php';
+
+use App\Controllers\RoomController;
+use App\Helpers\ResponseHelper;
+use App\Exceptions\HttpException;
 
 try {
     $requestUri = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
@@ -24,7 +23,6 @@ try {
     $resource = $segments[0] ?? '';
     $action   = $segments[1] ?? null;
     $method   = $_SERVER['REQUEST_METHOD'];
-    Config::load();
 
     $roomController = new RoomController();
 
@@ -91,6 +89,8 @@ try {
             ResponseHelper::sendResponse(404, ['message' => 'Not Found']);
             break;
     }
+} catch (HttpException $e) {
+    ResponseHelper::sendResponse($e->getStatusCode(), ['message' => $e->getMessage()]);
 } catch (\Throwable $e) {
     error_log('Unhandled router error: ' . $e->getMessage());
     ResponseHelper::sendResponse(500, ['error' => 'Internal server error.']);

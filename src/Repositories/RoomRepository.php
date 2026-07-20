@@ -1,11 +1,14 @@
 <?php
+declare(strict_types=1);
 
-require_once __DIR__ . '/../helpers/MongoDB.php';
-require_once __DIR__ . '/../helpers/RedisConnection.php';
+namespace App\Repositories;
 
+use App\Helpers\MongoDBConnection;
+use App\Helpers\RedisConnection;
 use MongoDB\BSON\ObjectId;
 use MongoDB\BSON\UTCDateTime;
 use Predis\Client;
+use Exception;
 
 class RoomRepository
 {
@@ -15,7 +18,6 @@ class RoomRepository
 
     public function __construct()
     {
-
         $this->db    = MongoDBConnection::getDatabase();
         $this->rooms = $this->db->selectCollection('rooms');
         $this->redis = RedisConnection::getClient();
@@ -79,6 +81,35 @@ class RoomRepository
         $doc['max_players']     = (int)$doc['max_players'];
         $doc['current_players'] = (int)$doc['current_players'];
         return $doc;
+    }
+
+    public function createWithPlayer(string $gameType, int $maxPlayers, int $userId, string $username): string
+    {
+        $doc = [
+            'game_type'      => $gameType,
+            'max_players'    => $maxPlayers,
+            'current_players' => 1,
+            'status'         => 'waiting',
+            'winner'         => '',
+            'players'        => [
+                [
+                    'user_id'  => $userId,
+                    'username' => $username,
+                    'is_ready' => false,
+                ]
+            ],
+            'created_at'     => new UTCDateTime()
+        ];
+
+        $result = $this->rooms->insertOne($doc);
+        $roomId = (string) $result->getInsertedId();
+
+        $this->deleteAvailableRoomsCache();
+        $room = $this->findById($roomId);
+        if ($room) {
+            $this->cacheRoom($roomId, $room);
+        }
+        return $roomId;
     }
 
     public function create(string $gameType, int $maxPlayers): string
@@ -205,23 +236,33 @@ class RoomRepository
             return;
         }
 
+        $room = $this->rooms->findOne(['_id' => $oid]);
+        if (!$room) return;
+
+        $update = [
+            '$pull' => ['players' => ['user_id' => $userId]],
+            '$inc'  => ['current_players' => -1],
+        ];
+
+        if ($room['status'] === 'waiting') {
+            $update['$set']['status'] = 'waiting';
+        }
+
         $result = $this->rooms->updateOne(
             ['_id' => $oid, 'players.user_id' => $userId],
-            [
-                '$pull' => ['players' => ['user_id' => $userId]],
-                '$inc'  => ['current_players' => -1],
-                '$set'  => ['status' => 'waiting']
-            ]
+            $update
         );
+
         if ($result->getMatchedCount() === 0) {
             return;
         }
+
         $this->deleteRoomCache($roomId);
         $this->clearAllPlayerRoomCaches($roomId);
         $this->deleteAvailableRoomsCache();
 
-        $room = $this->rooms->findOne(['_id' => $oid]);
-        if ($room && $room['current_players'] == 0) {
+        $updatedRoom = $this->rooms->findOne(['_id' => $oid]);
+        if ($updatedRoom && $updatedRoom['current_players'] == 0 && $updatedRoom['status'] === 'waiting') {
             $this->rooms->deleteOne(['_id' => $oid]);
             $this->deleteRoomCache($roomId);
         }
@@ -374,8 +415,53 @@ class RoomRepository
         }
         return false;
     }
+
+    public function resetAllReady(string $roomId): bool
+    {
+        try {
+            $oid = new ObjectId($roomId);
+        } catch (\InvalidArgumentException $e) {
+            return false;
+        }
+
+        $result = $this->rooms->updateOne(
+            ['_id' => $oid],
+            ['$set' => ['players.$[].is_ready' => false]]
+        );
+
+        if ($result->getModifiedCount() > 0) {
+            $this->deleteRoomCache($roomId);
+            $this->clearAllPlayerRoomCaches($roomId);
+            return true;
+        }
+        return false;
+    }
+
+    public function finishRoom(string $roomId, int $winnerId): bool
+    {
+        try {
+            $oid = new ObjectId($roomId);
+        } catch (\InvalidArgumentException $e) {
+            return false;
+        }
+
+        $result = $this->rooms->updateOne(
+            ['_id' => $oid],
+            ['$set' => ['status' => 'finished', 'winner' => (string)$winnerId]]
+        );
+
+        if ($result->getModifiedCount() > 0) {
+            $this->deleteRoomCache($roomId);
+            $this->clearAllPlayerRoomCaches($roomId);
+            $this->deleteAvailableRoomsCache();
+            return true;
+        }
+        return false;
+    }
+
     public function revertRoomwinner(string $roomId, string $winner): bool
     {
+
         try {
             $oid = new ObjectId($roomId);
         } catch (\InvalidArgumentException $e) {

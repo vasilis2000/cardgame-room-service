@@ -1,15 +1,13 @@
 <IfModule mod_rewrite.c>
     RewriteEngine On
-    RewriteRule ^(controllers|helpers|repos|services|vendor)/ - [F,L,NC]
+    RewriteRule ^(?!router\.php).*\.php$ - [F,L]
 
     <FilesMatch "^\.">
-        Order allow,deny
-        Deny from all
+        Require all denied
     </FilesMatch>
 
     <FilesMatch "\.(env|ini|log|sh|sql|json|lock|dist)$">
-        Order allow,deny
-        Deny from all
+        Require all denied
     </FilesMatch>
 
     RewriteCond %{REQUEST_FILENAME} -f [OR]
@@ -23,3 +21,8 @@
 </IfModule>
 
 Options -Indexes
+
+<IfModule mod_headers.c>
+    Header set X-Content-Type-Options "nosniff"
+    Header set X-Frame-Options "DENY"
+</IfModule>

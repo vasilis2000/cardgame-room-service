@@ -29,7 +29,8 @@ services:
     ports:
       - "8082:80"
     volumes:
-      - ./src:/var/www/html/src          
+      - .:/var/www/html               
+      - vendor_volume:/var/www/html/vendor     
     environment:
       MONGO_URI: ${MONGO_URI}
       MONGO_DB: ${MONGO_DB}
@@ -72,5 +73,6 @@ services:
 
 volumes:
   mongo_data:
+  vendor_volume:
   redis_data:
   rabbitmq_data:

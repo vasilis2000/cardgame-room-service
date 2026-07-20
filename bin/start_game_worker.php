@@ -2,11 +2,10 @@
 <?php
 
 require_once __DIR__ . '/../vendor/autoload.php';
-require_once __DIR__ . '/../src/helpers/Config.php';
 use PhpAmqpLib\Connection\AMQPStreamConnection;
 use PhpAmqpLib\Message\AMQPMessage;
 use PhpAmqpLib\Exception\AMQPIOException;
- Config::load();
+use App\Helpers\Config;
 $host = Config::getString('RABBITMQ_HOST');
 $port = Config::getString('RABBITMQ_PORT');
 $user = Config::getString('RABBITMQ_USER');

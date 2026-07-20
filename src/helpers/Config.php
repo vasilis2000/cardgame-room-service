@@ -2,6 +2,8 @@
 
 declare(strict_types=1);
 
+namespace App\Helpers;
+
 class Config
 {
     private static ?array $values = null;
@@ -23,20 +25,17 @@ class Config
         'JWT_EXPIRY' => 3600,
     ];
 
-
     public static function load(): void
     {
         if (self::$loaded) {
             return;
         }
 
-
         if (!self::isEnvLoaded()) {
             if (class_exists(\Dotenv\Dotenv::class)) {
                 $dotenv = \Dotenv\Dotenv::createImmutable(__DIR__ . '/../..');
                 $dotenv->load();
             } else {
-
                 error_log('Warning: vlucas/phpdotenv not found. Relying on existing environment variables.');
             }
         }
@@ -106,10 +105,8 @@ class Config
 
     public static function getInt(string $key, int $default = 0): int
     {
-        $value = self::get($key, $default);
-        return (int) $value;
+        return (int) self::get($key, $default);
     }
-
 
     public static function getBool(string $key, bool $default = false): bool
     {
@@ -120,10 +117,8 @@ class Config
         return filter_var($value, FILTER_VALIDATE_BOOLEAN);
     }
 
-
     public static function getString(string $key, string $default = ''): string
     {
-        $value = self::get($key, $default);
-        return (string) $value;
+        return (string) self::get($key, $default);
     }
 }

@@ -2,9 +2,11 @@
 
 declare(strict_types=1);
 
+namespace App\Helpers;
 
 use PhpAmqpLib\Connection\AMQPStreamConnection;
 use PhpAmqpLib\Message\AMQPMessage;
+use Exception;
 
 class RabbitMQPublisher
 {
@@ -22,7 +24,7 @@ class RabbitMQPublisher
             $this->connection = new AMQPStreamConnection($host, $port, $user, $pass);
             $this->channel = $this->connection->channel();
             $this->channel->queue_declare('start_game_queue', false, true, false, false);
-        } catch (\Exception $e) {
+        } catch (Exception $e) {
             error_log('RabbitMQ connection failed: ' . $e->getMessage());
             throw $e;
         }
@@ -40,7 +42,7 @@ class RabbitMQPublisher
 
         try {
             $this->channel->basic_publish($message, '', 'start_game_queue');
-        } catch (\Exception $e) {
+        } catch (Exception $e) {
             error_log('RabbitMQ publish failed: ' . $e->getMessage());
             throw $e;
         }
@@ -51,7 +53,7 @@ class RabbitMQPublisher
         try {
             $this->channel->close();
             $this->connection->close();
-        } catch (\Exception $e) {
+        } catch (Exception $e) {
         }
     }
 }

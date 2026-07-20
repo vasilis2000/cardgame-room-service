@@ -1,9 +1,12 @@
 #!/bin/sh
 set -e
 
-if [ ! -d "/var/www/html/vendor" ]; then
-    echo "Installing Composer dependencies..."
-    composer install --no-dev --optimize-autoloader
+if [ "$APP_ENV" = "production" ]; then
+    composer install --no-dev --no-interaction --optimize-autoloader
+else
+    composer install --no-interaction
 fi
+
+chown -R www-data:www-data /var/www/html
 
 exec "$@"
