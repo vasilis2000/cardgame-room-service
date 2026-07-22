@@ -7,6 +7,11 @@ services:
     volumes:
       - redis_data:/data
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   rabbitmq:
     image: rabbitmq:3-management-alpine
@@ -20,17 +25,24 @@ services:
     volumes:
       - rabbitmq_data:/var/lib/rabbitmq
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   web:
     build:
       context: .
       dockerfile: docker/php/Dockerfile
+      args:
+        UID: ${UID:-1000}
+        GID: ${GID:-1000}
     container_name: php_web
     ports:
       - "8082:80"
     volumes:
-      - .:/var/www/html               
-      - vendor_volume:/var/www/html/vendor     
+      - .:/var/www/html
     environment:
       MONGO_URI: ${MONGO_URI}
       MONGO_DB: ${MONGO_DB}
@@ -43,17 +55,22 @@ services:
       JWT_EXPIRY: ${JWT_EXPIRY}
       SERVER_BASE_URL: "http://web:80"
     depends_on:
-      - redis
-      - rabbitmq
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
     restart: unless-stopped
 
   worker:
     build:
       context: .
       dockerfile: docker/php/Dockerfile
+      args:
+        UID: ${UID:-1000}
+        GID: ${GID:-1000}
     container_name: php_worker
     volumes:
-      - ./src:/var/www/html/src          
+      - .:/var/www/html
     environment:
       MONGO_URI: ${MONGO_URI}
       MONGO_DB: ${MONGO_DB}
@@ -65,14 +82,14 @@ services:
       JWT_SECRET: ${JWT_SECRET}
       JWT_EXPIRY: ${JWT_EXPIRY}
     working_dir: /var/www/html
-    command: php bin/start_game_worker.php   
+    command: php bin/start_game_worker.php
     depends_on:
-      - rabbitmq
-      - redis
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
     restart: unless-stopped
 
 volumes:
-  mongo_data:
-  vendor_volume:
   redis_data:
   rabbitmq_data:

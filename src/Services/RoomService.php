@@ -14,11 +14,11 @@ use App\Exceptions\InternalServerException;
 class RoomService
 {
     private RoomRepository $repo;
-    private ?RabbitMQPublisher $publisher = null; 
+    private ?RabbitMQPublisher $publisher = null;
 
-    public function __construct()
+    public function __construct(RoomRepository $repo)
     {
-        $this->repo = new RoomRepository();
+        $this->repo = $repo;
     }
 
     private function getPublisher(): RabbitMQPublisher
@@ -144,7 +144,7 @@ class RoomService
         if (!$room) {
             throw new NotFoundException('Room not found.');
         }
-        if ($room['status'] !== 'starting' && $room['status'] !== 'playing') {
+        if ($room['status'] !== 'starting') {
             throw new ValidationException('Room is not in a state that can be finished.');
         }
 

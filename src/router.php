@@ -14,6 +14,8 @@ require_once __DIR__ . '/../vendor/autoload.php';
 use App\Controllers\RoomController;
 use App\Helpers\ResponseHelper;
 use App\Exceptions\HttpException;
+use App\Services\RoomService;
+use App\Repositories\RoomRepository;
 
 try {
     $requestUri = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
@@ -24,7 +26,10 @@ try {
     $action   = $segments[1] ?? null;
     $method   = $_SERVER['REQUEST_METHOD'];
 
-    $roomController = new RoomController();
+
+    $roomRepo = new RoomRepository();
+    $roomService = new RoomService($roomRepo);
+    $roomController = new RoomController($roomService);
 
     switch ($resource) {
         case 'room':
@@ -67,7 +72,7 @@ try {
                     break;
                 case 'current':
                     if ($method === 'GET') {
-                        $roomController->getroom();
+                        $roomController->getCurrent();
                     } else {
                         ResponseHelper::sendResponse(405, ['message' => 'Method Not Allowed.']);
                     }

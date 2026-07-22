@@ -13,19 +13,16 @@ class RoomController
 {
     private RoomService $service;
 
-    public function __construct()
+     public function __construct(RoomService $service)
     {
-        $this->service = new RoomService();
+        $this->service = $service;
     }
 
     public function create(): void
     {
         try {
             $user = AuthHelper::getAuthenticatedUser();
-            $data = json_decode(file_get_contents('php://input'), true) ?? [];
-            $gameType = $data['game_type'] ?? 'card';
-            $maxPlayers = (int)($data['max_players'] ?? 2);
-            $room = $this->service->createRoom($user['user_id'], $user['username'], $gameType, $maxPlayers);
+            $room = $this->service->createRoom($user['user_id'], $user['username'], "card", 2);
             ResponseHelper::sendResponse(201, [
                 'message' => 'Room created successfully.',
                 'room'    => $room,
@@ -101,7 +98,7 @@ class RoomController
         }
     }
 
-    public function getroom(): void
+    public function getCurrent(): void
     {
         try {
             $user = AuthHelper::getAuthenticatedUser();
