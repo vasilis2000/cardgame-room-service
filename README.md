@@ -1,6 +1,6 @@
 # Room Service
 
-A lightweight PHP microservice that handles multiplayer **room / lobby management** for a game platform: creating rooms, joining them, marking players ready, and starting or finishing a match. It sits between the client, MongoDB (persistence), Redis (caching), and RabbitMQ (notifying a downstream game-start consumer).
+A PHP microservice that handles multiplayer **room / lobby management** for a game platform: creating rooms, joining them, marking players ready, and starting or finishing a match. It sits between the client, MongoDB (persistence), Redis (caching), and RabbitMQ (notifying a downstream game-start consumer).
 
 ## Features
 
