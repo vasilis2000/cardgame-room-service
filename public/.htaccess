@@ -1,17 +1,17 @@
 RewriteEngine On
 
-RewriteRule ^\.(env|git|gitignore|docker) - [F,L]
-RewriteRule ^(vendor|src|bin|docker) - [F,L]
+RewriteRule ^\.(?!well-known).* - [F,L]
 
-<FilesMatch "^(composer\.(json|lock)|\.env|\.gitignore|docker-compose\.yml)$">
-    Order allow,deny
-    Deny from all
+RewriteRule ^(vendor|src|bin|docker)/ - [F,L]
+
+<FilesMatch "^(composer\.(json|lock)|\.env.*|\.git.*|docker-compose\.yml|Dockerfile|README\.md|\.htaccess)$">
+    Require all denied
 </FilesMatch>
+
+Options -Indexes
+AddDefaultCharset utf-8
 
 RewriteCond %{REQUEST_FILENAME} !-f
 RewriteCond %{REQUEST_FILENAME} !-d
 RewriteCond %{REQUEST_FILENAME} !-l
 RewriteRule ^ index.php [QSA,L]
-
-Options -Indexes
-AddDefaultCharset utf-8

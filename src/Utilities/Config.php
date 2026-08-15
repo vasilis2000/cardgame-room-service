@@ -10,7 +10,7 @@ class Config
     private static bool $loaded = false;
 
     private const REQUIRED_KEYS = [
-        'MONGO_URI',
+           'MONGO_URI',
         'MONGO_DB',
         'RABBITMQ_HOST',
         'RABBITMQ_PORT',
@@ -19,7 +19,6 @@ class Config
         'RABBITMQ_PASS',
         'REDIS_URL',
     ];
-
 
     private const DEFAULTS = [
         'JWT_EXPIRY' => 3600,
@@ -97,20 +96,25 @@ class Config
             return $value;
         }
 
-        if (func_num_args() >= 2) {
-            return $default;
-        }
-
-        return null;
+        return $default;
     }
 
     public static function getInt(string $key, int $default = 0): int
     {
-        $value = (int) self::get($key, $default);
-        if ($key === 'JWT_EXPIRY' && $value <= 0) {
+        $value = self::get($key, $default);
+        if (is_numeric($value)) {
+            $intValue = (int) $value;
+        } else {
+            if (func_num_args() >= 2) {
+                return $default;
+            }
+            throw new \InvalidArgumentException("Configuration value for '{$key}' is not numeric.");
+        }
+
+        if ($key === 'JWT_EXPIRY' && $intValue <= 0) {
             throw new \InvalidArgumentException('JWT_EXPIRY must be a positive integer.');
         }
-        return $value;
+        return $intValue;
     }
 
     public static function getBool(string $key, bool $default = false): bool
@@ -127,8 +131,7 @@ class Config
         return (string) self::get($key, $default);
     }
 
-
-  public static function getArray(string $key, string $separator = ',', array $default = []): array
+    public static function getArray(string $key, string $separator = ',', array $default = []): array
     {
         $value = self::get($key, null);
         if ($value === null || $value === '') {

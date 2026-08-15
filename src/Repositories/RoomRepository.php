@@ -12,7 +12,6 @@ use App\Utilities\RedisConnection;
 use MongoDB\BSON\ObjectId;
 use MongoDB\BSON\UTCDateTime;
 use Predis\Client;
-use Exception;
 
 class RoomRepository
 {
@@ -69,12 +68,27 @@ class RoomRepository
         }
     }
 
-    private function clearAllPlayerRoomCaches(string $roomId): void
+
+    private function clearRoomCaches(string $roomId, ?array $room = null): void
     {
-        $room = $this->findById($roomId);
-        if (!$room) return;
-        foreach ($room['players'] as $p) {
-            $this->deleteUserRoomCache((int)$p['user_id']);
+        $this->deleteRoomCache($roomId);
+        $this->deleteAvailableRoomsCache();
+
+        if ($room === null) {
+            try {
+                $oid = new ObjectId($roomId);
+                $doc = $this->rooms->findOne(['_id' => $oid]);
+                if ($doc) {
+                    $room = $this->mapRoom((array)$doc);
+                }
+            } catch (\InvalidArgumentException $e) {
+            }
+        }
+
+        if ($room) {
+            foreach ($room['players'] as $p) {
+                $this->deleteUserRoomCache((int)$p['user_id']);
+            }
         }
     }
 
@@ -108,7 +122,9 @@ class RoomRepository
         $result = $this->rooms->insertOne($doc);
         $roomId = (string) $result->getInsertedId();
 
+        $this->deleteUserRoomCache($userId);
         $this->deleteAvailableRoomsCache();
+
         $room = $this->findById($roomId);
         if ($room) {
             $this->cacheRoom($roomId, $room);
@@ -133,6 +149,7 @@ class RoomRepository
         $result = $this->rooms->updateOne(
             [
                 '_id' => $oid,
+                'status' => 'waiting',
                 'players.user_id' => ['$ne' => $userId],
                 '$expr' => ['$lt' => ['$current_players', '$max_players']]
             ],
@@ -151,10 +168,7 @@ class RoomRepository
             throw new ConflictException('Room is full.');
         }
 
-        $this->deleteRoomCache($roomId);
-        $this->clearAllPlayerRoomCaches($roomId);
-        $this->deleteUserRoomCache((int)$userId);
-        $this->deleteAvailableRoomsCache();
+        $this->clearRoomCaches($roomId);
     }
 
     public function findById(string $id): ?array
@@ -244,11 +258,8 @@ class RoomRepository
                 'status' => 'waiting'
             ]);
         }
-
-        $this->deleteRoomCache($roomId);
-        $this->deleteUserRoomCache($userId);
-        $this->clearAllPlayerRoomCaches($roomId);
-        $this->deleteAvailableRoomsCache();
+        $updatedRoom["players"][] = ["user_id" => $userId];
+        $this->clearRoomCaches($roomId, $this->mapRoom((array)$updatedRoom));
     }
 
     public function setReady(string $roomId, int $userId, bool $ready): void
@@ -266,9 +277,7 @@ class RoomRepository
         if ($result->getMatchedCount() === 0) {
             throw new BadRequestException('User not in this room.');
         }
-        $this->deleteRoomCache($roomId);
-        $this->clearAllPlayerRoomCaches($roomId);
-        $this->deleteAvailableRoomsCache();
+        $this->clearRoomCaches($roomId);
     }
 
     public function areAllReady(string $roomId): bool
@@ -375,9 +384,7 @@ class RoomRepository
         $success = $result->getModifiedCount() > 0;
 
         if ($success) {
-            $this->deleteRoomCache($roomId);
-            $this->clearAllPlayerRoomCaches($roomId);
-            $this->deleteAvailableRoomsCache();
+            $this->clearRoomCaches($roomId);
         }
 
         return $success;
@@ -397,9 +404,7 @@ class RoomRepository
         );
 
         if ($result->getModifiedCount() > 0) {
-            $this->deleteRoomCache($roomId);
-            $this->clearAllPlayerRoomCaches($roomId);
-            $this->deleteAvailableRoomsCache();
+            $this->clearRoomCaches($roomId);
             return true;
         }
         return false;
@@ -419,8 +424,7 @@ class RoomRepository
         );
 
         if ($result->getModifiedCount() > 0) {
-            $this->deleteRoomCache($roomId);
-            $this->clearAllPlayerRoomCaches($roomId);
+            $this->clearRoomCaches($roomId);
             return true;
         }
         return false;
@@ -440,13 +444,12 @@ class RoomRepository
         );
 
         if ($result->getModifiedCount() > 0) {
-            $this->deleteRoomCache($roomId);
-            $this->clearAllPlayerRoomCaches($roomId);
-            $this->deleteAvailableRoomsCache();
+            $this->clearRoomCaches($roomId);
             return true;
         }
         return false;
     }
+
     public function deleteRoom(string $roomId): bool
     {
         try {
@@ -455,12 +458,16 @@ class RoomRepository
             throw new BadRequestException('Invalid room ID format.');
         }
 
+        $doc = $this->rooms->findOne(['_id' => $oid]);
+        if (!$doc) {
+            return false;
+        }
+        $room = $this->mapRoom((array)$doc);
+
         $result = $this->rooms->deleteOne(['_id' => $oid]);
 
         if ($result->getDeletedCount() > 0) {
-            $this->deleteRoomCache($roomId);
-            $this->clearAllPlayerRoomCaches($roomId);
-            $this->deleteAvailableRoomsCache();
+            $this->clearRoomCaches($roomId, $room);
             return true;
         }
 
