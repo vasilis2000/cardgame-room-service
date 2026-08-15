@@ -6,8 +6,9 @@ namespace App\Repositories;
 
 use App\Exceptions\ConflictException;
 use App\Exceptions\NotFoundException;
-use App\Helpers\MongoDBConnection;
-use App\Helpers\RedisConnection;
+use App\Exceptions\BadRequestException;
+use App\Utilities\MongoDBConnection;
+use App\Utilities\RedisConnection;
 use MongoDB\BSON\ObjectId;
 use MongoDB\BSON\UTCDateTime;
 use Predis\Client;
@@ -120,7 +121,7 @@ class RoomRepository
         try {
             $oid = new ObjectId($roomId);
         } catch (\InvalidArgumentException $e) {
-            throw new Exception('Invalid room ID.');
+            throw new BadRequestException('Invalid room ID format.');
         }
 
         $newPlayer = [
@@ -218,7 +219,7 @@ class RoomRepository
         try {
             $oid = new ObjectId($roomId);
         } catch (\InvalidArgumentException $e) {
-            throw new \App\Exceptions\BadRequestException('Invalid room ID format.');
+            throw new BadRequestException('Invalid room ID format.');
         }
 
         $update = [
@@ -245,9 +246,8 @@ class RoomRepository
         }
 
         $this->deleteRoomCache($roomId);
-        foreach ($updatedRoom['players'] as $p) {
-            $this->deleteUserRoomCache((int)$p['user_id']);
-        }
+        $this->deleteUserRoomCache($userId);
+        $this->clearAllPlayerRoomCaches($roomId);
         $this->deleteAvailableRoomsCache();
     }
 
@@ -256,7 +256,7 @@ class RoomRepository
         try {
             $oid = new ObjectId($roomId);
         } catch (\InvalidArgumentException $e) {
-            throw new Exception('Invalid room ID.');
+            throw new BadRequestException('Invalid room ID format.');
         }
 
         $result = $this->rooms->updateOne(
@@ -264,7 +264,7 @@ class RoomRepository
             ['$set' => ['players.$.is_ready' => $ready]]
         );
         if ($result->getMatchedCount() === 0) {
-            throw new Exception('User not in this room.');
+            throw new BadRequestException('User not in this room.');
         }
         $this->deleteRoomCache($roomId);
         $this->clearAllPlayerRoomCaches($roomId);
@@ -276,7 +276,7 @@ class RoomRepository
         try {
             $oid = new ObjectId($roomId);
         } catch (\InvalidArgumentException $e) {
-            return false;
+            throw new BadRequestException('Invalid room ID format.');
         }
 
         $room = $this->rooms->findOne(['_id' => $oid]);
@@ -293,7 +293,7 @@ class RoomRepository
         try {
             $oid = new ObjectId($roomId);
         } catch (\InvalidArgumentException $e) {
-            return null;
+            throw new BadRequestException('Invalid room ID format.');
         }
 
         $room = $this->rooms->findOne(['_id' => $oid]);
@@ -319,6 +319,11 @@ class RoomRepository
             $roomData = $this->findById($cachedRoomId);
             if ($roomData && $roomData['status'] !== 'finished') {
                 $room = $roomData;
+            } else {
+                try {
+                    $this->redis->del("user_room:{$userId}");
+                } catch (\Exception $e) {
+                }
             }
         }
 
@@ -355,7 +360,7 @@ class RoomRepository
         try {
             $oid = new ObjectId($roomId);
         } catch (\InvalidArgumentException $e) {
-            return false;
+            throw new BadRequestException('Invalid room ID format.');
         }
 
         $result = $this->rooms->updateOne(
@@ -383,7 +388,7 @@ class RoomRepository
         try {
             $oid = new ObjectId($roomId);
         } catch (\InvalidArgumentException $e) {
-            return false;
+            throw new BadRequestException('Invalid room ID format.');
         }
 
         $result = $this->rooms->updateOne(
@@ -405,7 +410,7 @@ class RoomRepository
         try {
             $oid = new ObjectId($roomId);
         } catch (\InvalidArgumentException $e) {
-            return false;
+            throw new BadRequestException('Invalid room ID format.');
         }
 
         $result = $this->rooms->updateOne(
@@ -426,7 +431,7 @@ class RoomRepository
         try {
             $oid = new ObjectId($roomId);
         } catch (\InvalidArgumentException $e) {
-            return false;
+            throw new BadRequestException('Invalid room ID format.');
         }
 
         $result = $this->rooms->updateOne(
@@ -440,6 +445,25 @@ class RoomRepository
             $this->deleteAvailableRoomsCache();
             return true;
         }
+        return false;
+    }
+    public function deleteRoom(string $roomId): bool
+    {
+        try {
+            $oid = new ObjectId($roomId);
+        } catch (\InvalidArgumentException $e) {
+            throw new BadRequestException('Invalid room ID format.');
+        }
+
+        $result = $this->rooms->deleteOne(['_id' => $oid]);
+
+        if ($result->getDeletedCount() > 0) {
+            $this->deleteRoomCache($roomId);
+            $this->clearAllPlayerRoomCaches($roomId);
+            $this->deleteAvailableRoomsCache();
+            return true;
+        }
+
         return false;
     }
 }

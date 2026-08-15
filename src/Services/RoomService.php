@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace App\Services;
 
 use App\Repositories\RoomRepository;
-use App\Helpers\RabbitMQPublisher;
+use App\Utilities\RabbitMQPublisher;
 use App\Exceptions\ValidationException;
 use App\Exceptions\NotFoundException;
 use App\Exceptions\ConflictException;
@@ -87,6 +87,9 @@ class RoomService
         }
 
         $this->repo->removePlayer($room['id'], $userId);
+        if ($room['status'] === 'finished' && $room['current_players'] - 1 === 0) {
+            $this->repo->deleteRoom($room['id']);
+        }
     }
 
     public function toggleReady(int $userId): array
@@ -153,6 +156,9 @@ class RoomService
             throw new ValidationException('Winner must be a player in the room.');
         }
 
-        $this->repo->finishRoom($roomId, $winnerId);
+        $success = $this->repo->finishRoom($roomId, $winnerId);
+        if (!$success) {
+            throw new InternalServerException('Failed to finish room.');
+        }
     }
 }

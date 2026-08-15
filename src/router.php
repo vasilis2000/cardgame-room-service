@@ -1,23 +1,58 @@
 <?php
-header('Content-Type: application/json');
-header('Access-Control-Allow-Methods: GET, POST, OPTIONS');
-header('Access-Control-Allow-Headers: Content-Type, Authorization');
-header('Access-Control-Allow-Origin: *');
 
-if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
-    http_response_code(204);
-    exit;
-}
+declare(strict_types=1);
 
 require_once __DIR__ . '/../vendor/autoload.php';
 
 use App\Controllers\RoomController;
-use App\Helpers\ResponseHelper;
+use App\Utilities\ResponseHelper;
 use App\Exceptions\HttpException;
 use App\Services\RoomService;
 use App\Repositories\RoomRepository;
+use App\Utilities\Config;
+
 
 try {
+
+    Config::load();
+
+    header('Content-Type: application/json');
+
+    $allowedOrigins = Config::getArray('ALLOWED_ORIGINS', ',', ['http://localhost']);
+    $origin = $_SERVER['HTTP_ORIGIN'] ?? '';
+
+    if ($origin !== '' && !in_array($origin, $allowedOrigins, true)) {
+        http_response_code(403);
+        echo json_encode(['message' => 'Origin not allowed.']);
+        exit;
+    }
+
+    if ($origin !== '') {
+        header('Access-Control-Allow-Origin: ' . $origin);
+        header('Access-Control-Allow-Credentials: true');
+    } else {
+        header('Access-Control-Allow-Origin: *');
+    }
+
+    header('Access-Control-Allow-Methods: GET, POST, OPTIONS');
+    header('Access-Control-Allow-Headers: Content-Type, Authorization, X-Requested-With');
+
+    if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
+        $requestMethod = $_SERVER['HTTP_ACCESS_CONTROL_REQUEST_METHOD'] ?? null;
+        $requestHeaders = $_SERVER['HTTP_ACCESS_CONTROL_REQUEST_HEADERS'] ?? null;
+
+        if ($requestMethod) {
+            header('Access-Control-Allow-Methods: ' . $requestMethod);
+        }
+        if ($requestHeaders) {
+            header('Access-Control-Allow-Headers: ' . $requestHeaders);
+        }
+
+        header('Access-Control-Max-Age: 86400');
+        http_response_code(204);
+        exit;
+    }
+
     $requestUri = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
     $requestUri = trim($requestUri, '/');
     $segments = $requestUri ? explode('/', $requestUri) : [];
@@ -26,13 +61,11 @@ try {
     $action   = $segments[1] ?? null;
     $method   = $_SERVER['REQUEST_METHOD'];
 
-
-    $roomRepo = new RoomRepository();
-    $roomService = new RoomService($roomRepo);
-    $roomController = new RoomController($roomService);
-
     switch ($resource) {
         case 'room':
+            $roomRepo = new RoomRepository();
+            $roomService = new RoomService($roomRepo);
+            $roomController = new RoomController($roomService);
             switch ($action) {
                 case 'create':
                     if ($method === 'POST') {

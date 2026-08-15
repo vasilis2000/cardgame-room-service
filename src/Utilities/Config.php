@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace App\Helpers;
+namespace App\Utilities;
 
 class Config
 {
@@ -23,6 +23,7 @@ class Config
 
     private const DEFAULTS = [
         'JWT_EXPIRY' => 3600,
+        'ALLOWED_ORIGINS' => 'http://localhost',
     ];
 
     public static function load(): void
@@ -87,6 +88,10 @@ class Config
             return self::$values[$key];
         }
 
+        if (in_array($key, self::REQUIRED_KEYS, true)) {
+            throw new \RuntimeException("Required configuration key '{$key}' is not set.");
+        }
+
         $value = getenv($key);
         if ($value !== false) {
             return $value;
@@ -96,16 +101,16 @@ class Config
             return $default;
         }
 
-        if (in_array($key, self::REQUIRED_KEYS)) {
-            throw new \RuntimeException("Required configuration key '{$key}' is not set.");
-        }
-
         return null;
     }
 
     public static function getInt(string $key, int $default = 0): int
     {
-        return (int) self::get($key, $default);
+        $value = (int) self::get($key, $default);
+        if ($key === 'JWT_EXPIRY' && $value <= 0) {
+            throw new \InvalidArgumentException('JWT_EXPIRY must be a positive integer.');
+        }
+        return $value;
     }
 
     public static function getBool(string $key, bool $default = false): bool
@@ -120,5 +125,22 @@ class Config
     public static function getString(string $key, string $default = ''): string
     {
         return (string) self::get($key, $default);
+    }
+
+
+  public static function getArray(string $key, string $separator = ',', array $default = []): array
+    {
+        $value = self::get($key, null);
+        if ($value === null || $value === '') {
+            return $default;
+        }
+        if (is_array($value)) {
+            return $value;
+        }
+        if (!is_string($value)) {
+            return $default;
+        }
+        $parts = array_map('trim', explode($separator, $value));
+        return array_values(array_filter($parts, static fn($part) => $part !== ''));
     }
 }
