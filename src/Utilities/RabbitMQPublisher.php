@@ -13,6 +13,8 @@ class RabbitMQPublisher
     private $connection;
     private $channel;
 
+    private const CONFIRM_TIMEOUT = 5;
+
     public function __construct()
     {
         $host = Config::getString('RABBITMQ_HOST');
@@ -24,6 +26,8 @@ class RabbitMQPublisher
             $this->connection = new AMQPStreamConnection($host, $port, $user, $pass);
             $this->channel = $this->connection->channel();
             $this->channel->queue_declare('start_game_queue', false, true, false, false);
+
+            $this->channel->confirm_select();
         } catch (Exception $e) {
             error_log('RabbitMQ connection failed: ' . $e->getMessage());
             throw $e;
@@ -42,6 +46,11 @@ class RabbitMQPublisher
 
         try {
             $this->channel->basic_publish($message, '', 'start_game_queue');
+
+            $this->channel->wait_for_pending_acks(self::CONFIRM_TIMEOUT);
+        } catch (\PhpAmqpLib\Exception\AMQPTimeoutException $e) {
+            error_log('RabbitMQ publish confirm timed out for room ' . $roomid . ': ' . $e->getMessage());
+            throw $e;
         } catch (Exception $e) {
             error_log('RabbitMQ publish failed: ' . $e->getMessage());
             throw $e;

@@ -6,13 +6,13 @@ declare(strict_types=1);
 
 $projectRoot = realpath(__DIR__ . '/..');
 if ($projectRoot === false) {
-    fwrite(STDERR, "❌ Unable to determine project root.\n");
+    fwrite(STDERR, "[✗] Unable to determine project root.\n");
     exit(1);
 }
 
 $autoloadPath = $projectRoot . '/vendor/autoload.php';
 if (!file_exists($autoloadPath)) {
-    fwrite(STDERR, "❌ Composer autoloader not found at $autoloadPath\n");
+    fwrite(STDERR, "[✗] Composer autoloader not found at $autoloadPath\n");
     exit(1);
 }
 require_once $autoloadPath;
@@ -25,27 +25,32 @@ if (file_exists($envFile)) {
         $dotenv->load();
         echo "✓ .env loaded from $projectRoot\n";
     } catch (\Exception $e) {
-        fwrite(STDERR, "⚠️ Failed to load .env: " . $e->getMessage() . "\n");
+        fwrite(STDERR, "[⚠] Failed to load .env: " . $e->getMessage() . "\n");
     }
 } else {
-    fwrite(STDERR, "⚠️ No .env file found – relying on existing environment variables.\n");
+    fwrite(STDERR, "[⚠] No .env file found - relying on existing environment variables.\n");
 }
 
 use PhpAmqpLib\Connection\AMQPStreamConnection;
 use PhpAmqpLib\Message\AMQPMessage;
 use PhpAmqpLib\Exception\AMQPIOException;
 
-$host = getenv('RABBITMQ_HOST') ?: 'localhost';
-$port = (int)(getenv('RABBITMQ_PORT') ?: 5672);
-$user = getenv('RABBITMQ_USER') ?: 'guest';
-$pass = getenv('RABBITMQ_PASS') ?: 'guest';
-$queue = 'start_game_queue';
-$startGameUrl = 'http://host.docker.internal:8083/game/start';
+$host  = getenv('RABBITMQ_HOST') ?: 'localhost';
+$port  = (int)(getenv('RABBITMQ_PORT') ?: 5672);
+$user  = getenv('RABBITMQ_USER') ?: 'guest';
+$pass  = getenv('RABBITMQ_PASS') ?: 'guest';
 
-$maxRetries = 3;
-$retryDelay = 5;
+$queue        = 'start_game_queue';
+$dlxExchange  = 'start_game_dlx';
+$dlqQueue     = 'start_game_queue.dead';
+
+
+$startGameUrl = getenv('GAME_START_URL') ?: 'http://host.docker.internal:8083/game/start';
+
+$maxRetries           = 3;
+$retryDelay           = 5;
 $maxReconnectAttempts = 30;
-$reconnectSleep = 3;
+$reconnectSleep       = 3;
 
 function connectWithRetry(string $host, int $port, string $user, string $pass, int $maxAttempts, int $sleep): AMQPStreamConnection
 {
@@ -64,6 +69,25 @@ function connectWithRetry(string $host, int $port, string $user, string $pass, i
         }
     }
     throw new \RuntimeException('Unable to connect to RabbitMQ after maximum attempts.');
+}
+
+function validateStartGameMessage(?array $data): ?string
+{
+    if ($data === null) {
+        return 'body is not valid JSON';
+    }
+    if (!isset($data['roomid']) || !is_string($data['roomid']) || $data['roomid'] === '') {
+        return 'missing or invalid roomid';
+    }
+    if (!isset($data['players']) || !is_array($data['players']) || count($data['players']) === 0) {
+        return 'missing or empty players list';
+    }
+    foreach ($data['players'] as $p) {
+        if (!is_array($p) || !isset($p['user_id'], $p['username'])) {
+            return 'malformed player entry';
+        }
+    }
+    return null;
 }
 
 function callStartGameEndpoint(string $roomId, array $players, string $url, int $maxRetries, int $retryDelay): bool
@@ -95,7 +119,7 @@ function callStartGameEndpoint(string $roomId, array $players, string $url, int 
         }
 
         if ($attempt < $maxRetries) {
-            sleep($retryDelay * $attempt); // exponential backoff
+            sleep($retryDelay * $attempt); 
         }
         $attempt++;
     }
@@ -111,6 +135,8 @@ function consume(
     string $user,
     string $pass,
     string $queue,
+    string $dlxExchange,
+    string $dlqQueue,
     string $startGameUrl,
     int $maxRetries,
     int $retryDelay,
@@ -121,19 +147,30 @@ function consume(
         try {
             $connection = connectWithRetry($host, $port, $user, $pass, $maxReconnectAttempts, $reconnectSleep);
             $channel = $connection->channel();
-            $channel->queue_declare($queue, false, true, false, false);
+
+            $channel->exchange_declare($dlxExchange, 'fanout', false, true, false);
+            $channel->queue_declare($dlqQueue, false, true, false, false);
+            $channel->queue_bind($dlqQueue, $dlxExchange);
+
+            $channel->queue_declare($queue, false, true, false, false, false, [
+                'x-dead-letter-exchange' => ['S', $dlxExchange],
+            ]);
 
             echo " [*] Waiting for start game messages. To exit press CTRL+C\n";
 
             $callback = function (AMQPMessage $msg) use ($startGameUrl, $maxRetries, $retryDelay) {
                 $data = json_decode($msg->body, true);
-                if (!isset($data['roomid']) || !is_string($data['roomid'])) {
-                    echo " [x] Invalid message: missing or invalid roomid, rejecting (no requeue)\n";
+                $validationError = validateStartGameMessage(is_array($data) ? $data : null);
+
+                if ($validationError !== null) {
+                    error_log(" [x] Invalid start_game message ($validationError): " . $msg->body);
+                    echo " [x] Invalid message: $validationError, sending to DLQ\n";
                     $msg->nack(false, false);
                     return;
                 }
-                $roomId = $data['roomid'];
-                $players = $data['players'] ?? [];
+
+                $roomId  = $data['roomid'];
+                $players = $data['players'];
 
                 echo " [x] Received start game request for room $roomId\n";
 
@@ -143,7 +180,8 @@ function consume(
                     $msg->ack();
                     echo " [✓] Message acknowledged\n";
                 } else {
-                    echo " [⚠] Message processing failed; rejecting without requeue.\n";
+                    error_log(" [⚠] start_game HTTP call exhausted retries for room $roomId; sending to DLQ");
+                    echo " [⚠] Message processing failed; sending to DLQ.\n";
                     $msg->nack(false, false);
                 }
             };
@@ -175,6 +213,8 @@ consume(
     $user,
     $pass,
     $queue,
+    $dlxExchange,
+    $dlqQueue,
     $startGameUrl,
     $maxRetries,
     $retryDelay,
